@@ -9,21 +9,22 @@ from glob import glob
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Calibrate camera using a video of a chessboard or a sequence of images.')
-    parser.add_argument('input', help='input video file or glob mask')
-    parser.add_argument('out', help='output calibration yaml file')
-    parser.add_argument('--debug-dir', help='path to directory where images with detected chessboard will be written',
-                        default=None)
-    parser.add_argument('-c', '--corners', help='output corners file', default=None)
-    parser.add_argument('-fs', '--framestep', help='use every nth frame in the video', default=20, type=int)
-    # parser.add_argument('--figure', help='saved visualization name', default=None)
+    parser.add_argument('input',nargs="?", help='input video file or glob mask')
+    parser.add_argument('out',nargs="?",help='output calibration yaml file')
+    parser.add_argument('--debug_dir',nargs="?", help='path to directory where images with detected chessboard will be written',
+                        default='./pictures')
+    parser.add_argument('--output_dir',nargs="?",help='path to directory where calibration files will be saved.',default='./calibrationFiles')
+    parser.add_argument('-c', '--corners',nargs="?", help='output corners file', default=None)
+    parser.add_argument('-fs', '--framestep',nargs="?", help='use every nth frame in the video', default=20, type=int)
+    parser.add_argument('--height',nargs="?", help='Height in pixels of the image',default=480,type=int)
+    parser.add_argument('--width',nargs="?", help='Width in pixels of the image',default=640,type=int)
+    parser.add_argument('--mm',nargs="?",help='Size in mm of each square.',default=22,type=int)
+# parser.add_argument('--figure', help='saved visualization name', default=None)
     args = parser.parse_args()
 
-    if '*' in args.input:
-        source = glob(args.input)
-    else:
-        source = cv2.VideoCapture(args.input)
+    source = cv2.VideoCapture(0)
     # square_size = float(args.get('--square_size', 1.0))
-
+    
     pattern_size = (9, 6)
     pattern_points = np.zeros((np.prod(pattern_size), 3), np.float32)
     pattern_points[:, :2] = np.indices(pattern_size).T.reshape(-1, 2)
@@ -31,8 +32,10 @@ if __name__ == '__main__':
 
     obj_points = []
     img_points = []
-    h, w = 0, 0
+    h, w = args.height, args.width
     i = -1
+    image_count=0
+    image_goal=30
     while True:
         i += 1
         if isinstance(source, list):
@@ -47,14 +50,21 @@ if __name__ == '__main__':
                 break
             if i % args.framestep != 0:
                 continue
+        cv2.imshow('Image',img)
 
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
         print('Searching for chessboard in frame ' + str(i) + '...'),
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         h, w = img.shape[:2]
         found, corners = cv2.findChessboardCorners(img, pattern_size, flags=cv2.CALIB_CB_FILTER_QUADS)
         if found:
-            term = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 30, 0.1)
+            term = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, args.mm, 0.1)
             cv2.cornerSubPix(img, corners, (5, 5), (-1, -1), term)
+            image_count=image_count+1
+            if image_count==image_goal:
+                break
         if args.debug_dir:
             img_chess = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
             cv2.drawChessboardCorners(img_chess, pattern_size, corners, found)
@@ -73,11 +83,6 @@ if __name__ == '__main__':
             pickle.dump(obj_points, fw)
             pickle.dump((w, h), fw)
         
-# load corners
-#    with open('corners.pkl', 'rb') as fr:
-#        img_points = pickle.load(fr)
-#        obj_points = pickle.load(fr)
-#        w, h = pickle.load(fr)
 
     print('\nPerforming calibration...')
     rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.calibrateCamera(obj_points, img_points, (w, h), None, None)
@@ -96,5 +101,11 @@ if __name__ == '__main__':
     # print "distortion coefficients: ", dist_coefs.ravel()
 
     calibration = {'rms': rms, 'camera_matrix': camera_matrix.tolist(), 'dist_coefs': dist_coefs.tolist() }
-    with open(args.out, 'w') as fw:
-        yaml.dump(calibration, fw)
+
+    ##OUTPUT DIRECTORIES
+    file1 = args.output_dir + "/cameraMatrix.txt"
+    np.savetxt(file1,camera_matrix,delimiter=',')
+    file2 = args.output_dir + "/cameraDistortion.txt"
+    np.savetxt(file2,dist_coefs,delimiter=',')
+
+
