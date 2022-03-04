@@ -33,6 +33,9 @@ if __name__ == '__main__':
     obj_points = []
     img_points = []
     h, w = args.height, args.width
+    source.set(cv2.CAP_PROP_FRAME_HEIGHT,h)
+    source.set(cv2.CAP_PROP_FRAME_WIDTH,w)
+    
     i = -1
     image_count=0
     image_goal=30
